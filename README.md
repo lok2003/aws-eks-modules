@@ -344,3 +344,115 @@ terraform destroy
 ```
 
 Verify in the AWS Console that the resources have been removed.
+
+
+## Troubleshooting
+
+### 1. EKS Node Group `Cross-account pass role is not allowed`
+
+If Terraform shows:
+
+```text
+Error: creating EKS Node Group
+AccessDeniedException: Cross-account pass role is not allowed
+```
+
+Check the AWS account:
+
+```powershell
+aws sts get-caller-identity
+```
+
+Check the node IAM role ARN:
+
+```powershell
+aws iam get-role --role-name eks-node-role --query "Role.Arn" --output text
+```
+
+The AWS account ID in the role ARN should match the account being used by Terraform.
+
+---
+
+### 2. `kubectl` asks for credentials
+
+If you see:
+
+```text
+the server has asked the client to provide credentials
+```
+
+Check the EKS authentication mode:
+
+```powershell
+aws eks describe-cluster --region <region> --name <cluster-name> --query "cluster.accessConfig"
+```
+
+Check EKS access entries:
+
+```powershell
+aws eks list-access-entries --region <region> --cluster-name <cluster-name>
+```
+
+If the IAM user is not present, create an EKS access entry:
+
+```powershell
+aws eks create-access-entry `
+  --region <region> `
+  --cluster-name <cluster-name> `
+  --principal-arn arn:aws:iam::<ACCOUNT_ID>:user/<USERNAME>
+```
+
+Associate the EKS cluster administrator policy:
+
+```powershell
+aws eks associate-access-policy `
+  --region <region> `
+  --cluster-name <cluster-name> `
+  --principal-arn arn:aws:iam::<ACCOUNT_ID>:user/<USERNAME> `
+  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy `
+  --access-scope type=cluster
+```
+
+Update the kubeconfig:
+
+```powershell
+aws eks update-kubeconfig --region <region> --name <cluster-name>
+```
+
+Test:
+
+```powershell
+kubectl get nodes
+```
+
+---
+
+### 3. Check EKS authentication token
+
+If `kubectl` cannot authenticate, test the AWS EKS token:
+
+```powershell
+aws eks get-token --region <region> --cluster-name <cluster-name>
+```
+
+If a token is returned, AWS authentication is working.
+
+---
+
+### 4. Check AWS Region
+
+Check the configured AWS region:
+
+```powershell
+aws configure list
+```
+
+You can specify the region directly when working with EKS:
+
+```powershell
+aws eks list-clusters --region <region>
+```
+
+```powershell
+aws eks update-kubeconfig --region <region> --name <cluster-name>
+```
